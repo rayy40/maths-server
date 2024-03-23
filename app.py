@@ -1,7 +1,7 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict
+from typing import List, Dict, Optional, Union
 from sympy import Matrix, parse_expr, latex, symbols, Eq, solve, factor, Symbol
 from sympy.matrices.common import ShapeError, NonSquareMatrixError, NonInvertibleMatrixError
 import numpy as np
@@ -24,12 +24,12 @@ class SimultaneousEquation(BaseModel):
     equation: Dict[str, str]
     
 class MatrixRequestHistory(BaseModel):
-    matrixHistory: Dict[str, List[List[str]]]
+    matrixHistory: Dict[str, Union[List[List[Union[str, int, float]]], str, int, float]]
     equation: str
 
 class MatrixRequest(BaseModel):
     matrix: List[List[str]] = []
-    
+    power: Optional[int] = None
     
 def convert_to_katex(latex_expression):
     latex_expression = latex_expression.replace(r'\\', r' \\newline ')
@@ -40,17 +40,28 @@ def convert_to_katex(latex_expression):
 
     
 @app.post("/api/matrix/square")
-async def matrix_square(request: Request, data: MatrixRequest):
-    
+async def matrix_square(data: MatrixRequest):
     matrix = np.array([[int(num) for num in row] for row in data.matrix])
     
     matrix_squared = np.round(np.matmul(matrix, matrix), decimals=2)
     
     return {"result": matrix_squared.tolist()}
 
+@app.post("/api/matrix/power")
+async def matrix_square(data: MatrixRequest):
+    print(data)
+    matrix = np.array([[int(num) for num in row] for row in data.matrix])
+
+    if data.power is not None:
+        matrix_powered = np.round(np.linalg.matrix_power(matrix, data.power), decimals=2)
+    else:
+        matrix_powered = np.round(np.linalg.matrix_power(matrix, 2), decimals=2)
+    
+    print(matrix_powered.tolist())
+    return {"result": matrix_powered.tolist()}
 
 @app.post("/api/matrix/inverse")
-async def matrix_square(request: Request, data: MatrixRequest):
+async def matrix_square(data: MatrixRequest):
     try:
         matrix = np.array([[int(num) for num in row] for row in data.matrix])
         matrix_inverse = np.round(np.linalg.inv(matrix), decimals=2)
@@ -60,7 +71,7 @@ async def matrix_square(request: Request, data: MatrixRequest):
 
 
 @app.post("/api/matrix/trace")
-async def matrix_square(request: Request, data: MatrixRequest):
+async def matrix_square(data: MatrixRequest):
     
     matrix = np.array([[int(num) for num in row] for row in data.matrix])
     
@@ -73,7 +84,7 @@ async def matrix_square(request: Request, data: MatrixRequest):
 
 
 @app.post("/api/matrix/determinant")
-async def matrix_square(request: Request, data: MatrixRequest):
+async def matrix_square(data: MatrixRequest):
     
     matrix = np.array([[int(num) for num in row] for row in data.matrix])
     
@@ -86,7 +97,7 @@ async def matrix_square(request: Request, data: MatrixRequest):
 
 
 @app.post("/api/matrix/rref")
-async def matrix_rref(request: Request, data: MatrixRequest):
+async def matrix_rref(data: MatrixRequest):
     matrix = np.array([[int(num) for num in row] for row in data.matrix])
     
     sympy_matrix = Matrix(matrix)
@@ -99,7 +110,7 @@ async def matrix_rref(request: Request, data: MatrixRequest):
 
 
 @app.post("/api/matrix/transpose")
-async def matrix_square(request: Request, data: MatrixRequest):
+async def matrix_square(data: MatrixRequest):
     
     matrix = np.array([[int(num) for num in row] for row in data.matrix])
     
@@ -109,7 +120,7 @@ async def matrix_square(request: Request, data: MatrixRequest):
 
 
 @app.post("/api/matrix/eigen")
-async def matrix_eigen_value(request: Request, data: MatrixRequest):
+async def matrix_eigen_value(data: MatrixRequest):
 
     matrix = np.array([[int(num) for num in row] for row in data.matrix])
     
@@ -127,7 +138,7 @@ async def matrix_eigen_value(request: Request, data: MatrixRequest):
 
 
 @app.post("/api/matrix/equation")
-async def matrix_equation(request: Request, data: MatrixRequestHistory):
+async def matrix_equation(data: MatrixRequestHistory):
     try:  
         matrixHistory = data.matrixHistory
         equation = data.equation
@@ -140,10 +151,10 @@ async def matrix_equation(request: Request, data: MatrixRequestHistory):
             char = equation[index]
             
             if char.isalpha():
+                print(char)
                 if char == 'T':
-                    index += 1  # Skip only the current character for 'T'
+                    index += 1
                     continue
-                
                 if equation[index:index+3] == 'det':
                     operation_symbols.add('det')
                     index += 2  
@@ -181,20 +192,15 @@ async def matrix_equation(request: Request, data: MatrixRequestHistory):
                 trace = round(matrix_values[symbol].trace(), 2)
                 expression = expression.replace('trace({})'.format(symbol), str(trace))
                 
-            # if 'rref' in operation_symbols:
-            #     rref = matrix_values[symbol].rref()
-            #     expression = expression.replace('rref({})'.format(symbol), rref)
-                
             substitution[symbol] = matrix_values[symbol]
-            
+
         expression_expr = parse_expr(expression)
         
         substituted_expression = expression_expr.subs(substitution)
-
         result = substituted_expression.evalf()
         
         if isinstance(result, Matrix):
-            np_matrix = np.around(np.array(result.tolist(), dtype=float), decimals=2)
+            np_matrix = np.round(np.array(result.tolist(), dtype=float), decimals=2)
             result_list = np_matrix.tolist()
             result_type = "matrix"
         else:
@@ -217,7 +223,7 @@ async def matrix_equation(request: Request, data: MatrixRequestHistory):
 
 
 @app.post("/api/roots/equation-solver")
-async def equation_solver(request: Request, data: RootsRequest):
+async def equation_solver(data: RootsRequest):
     
     expression = data.equation.strip("'").replace('^', '**').replace('{', '(').replace('}', ')').replace("\\", "")
     
@@ -249,7 +255,7 @@ async def equation_solver(request: Request, data: RootsRequest):
 
 
 @app.post("/api/roots/simultaneous-equation")
-async def simultaneous_equation(request: Request, data: SimultaneousEquation):
+async def simultaneous_equation(data: SimultaneousEquation):
     equations = data.equation
     
     parsed_eqs = []
